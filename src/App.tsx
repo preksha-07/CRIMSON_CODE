@@ -10,7 +10,7 @@ import Hero from './components/layout/Hero';
 import CreateCapsule from './pages/CreateCapsule';
 import RetrieveCapsule from './pages/RetrieveCapsule';
 import CapsuleUnavailable from './pages/CapsuleUnavailable';
-import SecretRevealed from './pages/SecretRevealed';
+
 function App() {
   return (
     <BrowserRouter>
@@ -54,10 +54,7 @@ function App() {
   element={<CapsuleUnavailable />}
   
 />
-<Route
-  path="/secret-revealed"
-  element={<SecretRevealed />}
-/>
+
         </Routes>
       </main>
     </BrowserRouter>
