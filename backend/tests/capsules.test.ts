@@ -76,7 +76,24 @@ describe("Capsule Creation & Retrieval API", () => {
       });
       expect(res.statusCode).toBe(400);
       expect(res.json().details.fieldErrors.expiresAt[0]).toContain("must be in the future");
+    });    it("accepts request if ciphertext is exactly 1,500,000 characters (maximum schema limit)", async (ctx) => {
+      if (!isDbConnected) {
+        ctx.skip();
+        return;
+      }
+      const maxCiphertext = "a".repeat(1_500_000);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/capsules",
+        payload: {
+          ciphertext: maxCiphertext,
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      createdIds.push(res.json().id);
     });
+
 
     it("rejects request if expiresAt is invalid ISO 8601 string", async () => {
       const res = await app.inject({
