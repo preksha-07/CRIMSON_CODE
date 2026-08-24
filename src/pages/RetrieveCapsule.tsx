@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import {
   AlertCircle,
@@ -9,10 +8,10 @@ import {
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-const PBKDF2_ITERATIONS = 310000;
-
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL;
+
+const PBKDF2_ITERATIONS = 310000;
 
 interface CapsuleMetadata {
   iv: string;
@@ -170,7 +169,16 @@ function RetrieveCapsule() {
         },
       );
 
-      if (response.status === 404) {
+      /*
+       * 404 = capsule does not exist.
+       * 410 = capsule expired or reached max reads.
+       *
+       * Both should show the unavailable page.
+       */
+      if (
+        response.status === 404 ||
+        response.status === 410
+      ) {
         navigate('/capsule-unavailable');
         return;
       }
@@ -196,10 +204,9 @@ function RetrieveCapsule() {
       /*
        * IMPORTANT:
        *
-       * The backend returns the crypto parameters
-       * inside capsule.metadata.
+       * Crypto metadata is read from capsule.metadata.
        *
-       * The password remains client-side.
+       * This matches the create API contract.
        */
       const decryptedMessage =
         await decryptMessage(
@@ -209,23 +216,20 @@ function RetrieveCapsule() {
         );
 
       /*
-       * Only the successfully decrypted plaintext
-       * is passed to the SecretRevealed page.
+       * Only successfully decrypted plaintext
+       * is sent to SecretRevealed.
        *
-       * The ciphertext is never rendered as the secret.
+       * The password is NOT sent.
+       * The encryption key is NOT sent.
        */
       navigate('/secret-revealed', {
         state: {
           message: decryptedMessage,
         },
       });
-    } catch (error) {
-      console.error(error);
+    } catch (retrieveError) {
+      console.error(retrieveError);
 
-      /*
-       * AES-GCM authentication fails when the password
-       * is incorrect or the ciphertext has been modified.
-       */
       setError(
         'Unable to unlock the capsule. Please check the password and try again.',
       );
@@ -354,4 +358,3 @@ function RetrieveCapsule() {
 }
 
 export default RetrieveCapsule;
-

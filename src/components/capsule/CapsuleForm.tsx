@@ -1,32 +1,45 @@
 import { useState } from 'react';
-import {
-  LockKeyhole,
-  Clock3,
-  AlertCircle,
-  ShieldCheck,
-} from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const MAX_CHARACTERS = 10000;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
 const PBKDF2_ITERATIONS = 310000;
-const SALT_LENGTH = 16;
-const IV_LENGTH = 12;
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL;
+type ExpiryOption = '1h' | '6h' | '24h' | '7d';
 
-  interface CreatedCapsule {
-  id?: string;
+interface EncryptedMessage {
+  ciphertext: string;
+  iv: string;
+  salt: string;
+  algorithm: string;
+  kdf: string;
+  kdfIterations: number;
 }
 
-  function bytesToBase64(bytes: Uint8Array): string {
+function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
 
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
   }
 
   return btoa(binary);
+}
+
+function getExpiryDate(option: ExpiryOption): string {
+  const now = new Date();
+
+  const durationMap: Record<ExpiryOption, number> = {
+    '1h': 60 * 60 * 1000,
+    '6h': 6 * 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+  };
+
+  return new Date(
+    now.getTime() + durationMap[option],
+  ).toISOString();
 }
 
 async function deriveEncryptionKey(
@@ -65,66 +78,42 @@ async function deriveEncryptionKey(
 async function encryptMessage(
   message: string,
   password: string,
-) {
+): Promise<EncryptedMessage> {
   const encoder = new TextEncoder();
 
   const salt = crypto.getRandomValues(
-    new Uint8Array(SALT_LENGTH),
+    new Uint8Array(16),
   );
 
   const iv = crypto.getRandomValues(
-    new Uint8Array(IV_LENGTH),
+    new Uint8Array(12),
   );
 
-  /*
-   * The password stays inside the browser.
-   * It is used to derive the AES encryption key.
-   */
   const key = await deriveEncryptionKey(
     password,
     salt,
   );
 
-  /*
-   * Plaintext is encrypted before any API request.
-   */
-  const encrypted = await crypto.subtle.encrypt(
-    {
-      name: 'AES-GCM',
-      iv,
-    },
-    key,
-    encoder.encode(message),
-  );
+  const encryptedBuffer =
+    await crypto.subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv,
+      },
+      key,
+      encoder.encode(message),
+    );
 
   return {
     ciphertext: bytesToBase64(
-      new Uint8Array(encrypted),
+      new Uint8Array(encryptedBuffer),
     ),
     iv: bytesToBase64(iv),
     salt: bytesToBase64(salt),
-    algorithm: 'AES-256-GCM',
-    kdf: 'PBKDF2-SHA-256',
+    algorithm: 'AES-GCM',
+    kdf: 'PBKDF2',
     kdfIterations: PBKDF2_ITERATIONS,
   };
-}
-
-function getExpirationDate(
-  expiry: string,
-): string {
-  const durations: Record<string, number> = {
-    '10-minutes': 10 * 60 * 1000,
-    '1-hour': 60 * 60 * 1000,
-    '1-day': 24 * 60 * 60 * 1000,
-    '7-days': 7 * 24 * 60 * 60 * 1000,
-  };
-
-  const duration =
-    durations[expiry] ?? durations['1-hour'];
-
-  return new Date(
-    Date.now() + duration,
-  ).toISOString();
 }
 
 function CapsuleForm() {
@@ -132,10 +121,14 @@ function CapsuleForm() {
 
   const [message, setMessage] = useState('');
   const [password, setPassword] = useState('');
-  const [expiry, setExpiry] = useState('1-hour');
+  const [showPassword, setShowPassword] =
+    useState(false);
+  const [expiry, setExpiry] =
+    useState<ExpiryOption>('1h');
 
   const [error, setError] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
 
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>,
@@ -143,22 +136,18 @@ function CapsuleForm() {
     event.preventDefault();
 
     if (!message.trim()) {
-      setError(
-        'Please enter some information before creating a capsule.',
-      );
+      setError('Please enter a secret message.');
       return;
     }
 
     if (!password.trim()) {
-      setError(
-        'Please enter a password to protect your capsule.',
-      );
+      setError('Please create a capsule password.');
       return;
     }
 
     if (!API_BASE_URL) {
       setError(
-        'The API server is not configured.',
+        'API configuration is missing. Please check your .env file.',
       );
       return;
     }
@@ -171,50 +160,59 @@ function CapsuleForm() {
     }
 
     setError('');
-    setIsCreating(true);
+    setIsSubmitting(true);
 
     try {
       /*
-       * Encrypt completely in the browser.
+       * IMPORTANT:
        *
-       * The following NEVER get sent to the backend:
-       * - plaintext message
-       * - password
-       * - derived encryption key
+       * The plaintext message and password never go
+       * into the API request.
+       *
+       * Encryption happens completely inside the browser.
        */
       const encrypted = await encryptMessage(
         message,
         password,
       );
 
-      /*
-       * The selected expiry is converted into the
-       * actual expiration timestamp.
-       */
-      const expiresAt =
-        getExpirationDate(expiry);
+      const expiresAt = getExpiryDate(expiry);
 
+      /*
+       * The backend contract expects:
+       *
+       * ciphertext
+       * metadata
+       * expiresAt
+       * maxReads
+       *
+       * All cryptographic metadata is intentionally
+       * stored inside metadata so RetrieveCapsule can
+       * read capsule.metadata consistently.
+       */
       const response = await fetch(
         `${API_BASE_URL}/api/capsules`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            Accept: 'application/json',
           },
-         body: JSON.stringify({
-  ciphertext: encrypted.ciphertext,
+          body: JSON.stringify({
+            ciphertext: encrypted.ciphertext,
 
-  metadata: {
-    iv: encrypted.iv,
-    salt: encrypted.salt,
-    algorithm: encrypted.algorithm,
-    kdf: encrypted.kdf,
-    kdfIterations: encrypted.kdfIterations,
-  },
+            metadata: {
+              iv: encrypted.iv,
+              salt: encrypted.salt,
+              algorithm: encrypted.algorithm,
+              kdf: encrypted.kdf,
+              kdfIterations:
+                encrypted.kdfIterations,
+            },
 
-  expiresAt,
-  maxReads: 5,
-}),
+            expiresAt,
+            maxReads: 5,
+          }),
         },
       );
 
@@ -224,237 +222,213 @@ function CapsuleForm() {
         );
       }
 
-      /*
-       * Expected backend response:
-       *
-       * {
-       *   "id": "abc123"
-       * }
-       */
-      const capsule: CreatedCapsule =
-        await response.json();
+      const data = await response.json();
 
-      if (!capsule.id) {
+      /*
+       * The backend must return the newly created
+       * capsule identifier.
+       */
+      if (!data.capsuleId) {
         throw new Error(
-          'The server did not return a capsule identifier.',
+          'The backend did not return a capsule ID.',
         );
       }
 
       /*
-       * Only the capsule ID is passed forward.
+       * The password and encryption key are NOT
+       * passed through navigation state.
        *
-       * Password and encryption key are NOT passed.
+       * Only the backend-generated capsule ID is
+       * required for the created page.
        */
       navigate('/capsule-created', {
         state: {
-          capsuleId: capsule.id,
+          capsuleId: data.capsuleId,
         },
       });
+    } catch (submitError) {
+      console.error(submitError);
 
-      /*
-       * Clear sensitive values after successful creation.
-       */
-      setMessage('');
-      setPassword('');
-    } catch (error) {
-      console.error(error);
-
-      if (
-        error instanceof Error &&
-        error.message ===
-          'The server did not return a capsule identifier.'
-      ) {
-        setError(error.message);
-      } else {
-        setError(
-          'We could not create the capsule. Please try again.',
-        );
-      }
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Something went wrong while creating the capsule.',
+      );
     } finally {
-      setIsCreating(false);
-    }
-  }
-
-  function handleMessageChange(
-    event: React.ChangeEvent<HTMLTextAreaElement>,
-  ) {
-    setMessage(event.target.value);
-
-    if (error) {
-      setError('');
-    }
-  }
-
-  function handlePasswordChange(
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) {
-    setPassword(event.target.value);
-
-    if (error) {
-      setError('');
+      setIsSubmitting(false);
     }
   }
 
   return (
-    <form
-      className="capsule-form"
-      onSubmit={handleSubmit}
-      noValidate
-    >
-      <div className="form-section">
-        <label htmlFor="secret">
-          Your sensitive information
-        </label>
+    <main className="create-page">
+      <section className="create-hero">
+        <div className="page-glow page-glow-one" />
+        <div className="page-glow page-glow-two" />
 
-        <textarea
-          id="secret"
-          name="secret"
-          rows={10}
-          maxLength={MAX_CHARACTERS}
-          value={message}
-          onChange={handleMessageChange}
-          placeholder="Write the information you want to share..."
-          aria-describedby="secret-help secret-count"
-          aria-invalid={Boolean(error)}
-          disabled={isCreating}
-        />
+        <div className="create-card">
+          <div className="create-icon">
+            <LockKeyhole size={30} />
+          </div>
 
-        <div className="field-meta">
-          <p
-            id="secret-help"
-            className="field-help"
-          >
+          <span className="eyebrow">
+            CREATE CAPSULE
+          </span>
+
+          <h1>
+            Keep it private.
+            <br />
+            <span>Keep it temporary.</span>
+          </h1>
+
+          <p className="create-description">
             Your message is encrypted in your browser
-            before it is sent to the server.
+            before anything is sent to the server.
           </p>
 
-          <p
-            id="secret-count"
-            className="character-count"
-            aria-live="polite"
+          <form
+            className="capsule-form"
+            onSubmit={handleSubmit}
+            noValidate
           >
-            {message.length.toLocaleString()} /{' '}
-            {MAX_CHARACTERS.toLocaleString()}
-          </p>
-        </div>
-      </div>
+            <div className="form-group">
+              <label htmlFor="secret-message">
+                Secret message
+              </label>
 
-      {error && (
-        <div
-          className="form-error"
-          role="alert"
-        >
-          <AlertCircle
-            size={18}
-            aria-hidden="true"
-          />
+              <textarea
+                id="secret-message"
+                value={message}
+                onChange={(event) => {
+                  setMessage(event.target.value);
+                  setError('');
+                }}
+                placeholder="Write the message you want to protect..."
+                rows={7}
+                required
+                disabled={isSubmitting}
+              />
+            </div>
 
-          <span>{error}</span>
-        </div>
-      )}
+            <div className="form-group">
+              <label htmlFor="capsule-password">
+                <LockKeyhole size={16} />
+                Capsule password
+              </label>
 
-      <div className="form-grid">
-        <div className="form-section">
-          <label htmlFor="expiry">
-            <Clock3
-              size={16}
-              aria-hidden="true"
-            />
+              <div className="password-wrapper">
+                <input
+                  id="capsule-password"
+                  type={
+                    showPassword
+                      ? 'text'
+                      : 'password'
+                  }
+                  value={password}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setError('');
+                  }}
+                  placeholder="Create a password"
+                  autoComplete="new-password"
+                  required
+                  disabled={isSubmitting}
+                />
 
-            Expiration
-          </label>
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() =>
+                    setShowPassword(
+                      !showPassword,
+                    )
+                  }
+                  aria-label={
+                    showPassword
+                      ? 'Hide password'
+                      : 'Show password'
+                  }
+                  disabled={isSubmitting}
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} />
+                  ) : (
+                    <Eye size={18} />
+                  )}
+                </button>
+              </div>
+            </div>
 
-          <select
-            id="expiry"
-            name="expiry"
-            value={expiry}
-            onChange={(event) =>
-              setExpiry(event.target.value)
-            }
-            disabled={isCreating}
-          >
-            <option value="10-minutes">
-              10 minutes
-            </option>
+            <div className="form-group">
+              <label htmlFor="expiry">
+                Capsule lifetime
+              </label>
 
-            <option value="1-hour">
-              1 hour
-            </option>
+              <select
+                id="expiry"
+                value={expiry}
+                onChange={(event) =>
+                  setExpiry(
+                    event.target.value as ExpiryOption,
+                  )
+                }
+                disabled={isSubmitting}
+              >
+                <option value="1h">
+                  1 hour
+                </option>
 
-            <option value="1-day">
-              1 day
-            </option>
+                <option value="6h">
+                  6 hours
+                </option>
 
-            <option value="7-days">
-              7 days
-            </option>
-          </select>
-        </div>
+                <option value="24h">
+                  24 hours
+                </option>
 
-        <div className="form-section">
-          <label htmlFor="password">
-            <LockKeyhole
-              size={16}
-              aria-hidden="true"
-            />
+                <option value="7d">
+                  7 days
+                </option>
+              </select>
+            </div>
 
-            Password protection
+            {error && (
+              <div
+                className="form-error"
+                role="alert"
+              >
+                <AlertCircle size={18} />
+                <span>{error}</span>
+              </div>
+            )}
 
-            <span className="optional-label">
-              Required
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? 'Encrypting...'
+                : 'Create Secure Capsule'}
+
+              <span aria-hidden="true">
+                →
+              </span>
+            </button>
+          </form>
+
+          <div className="create-note">
+            <ShieldCheck size={17} />
+
+            <span>
+              Your message is encrypted locally.
+              Your password and encryption key are
+              never sent to the server.
             </span>
-          </label>
-
-          <input
-            id="password"
-            name="password"
-            type="password"
-            value={password}
-            onChange={handlePasswordChange}
-            placeholder="Create a capsule password"
-            autoComplete="new-password"
-            required
-            disabled={isCreating}
-          />
+          </div>
         </div>
-      </div>
-
-      <div
-        className="security-note"
-        role="note"
-      >
-        <ShieldCheck
-          size={18}
-          aria-hidden="true"
-        />
-
-        <div>
-          <strong>
-            Encrypted in your browser
-          </strong>
-
-          <p>
-            Your message is protected with
-            AES-256-GCM before it leaves your device.
-            Your password and encryption key are never
-            sent to the server.
-          </p>
-        </div>
-      </div>
-
-      <button
-        type="submit"
-        className="primary-button create-button"
-        disabled={isCreating}
-      >
-        {isCreating
-          ? 'Encrypting & Creating...'
-          : 'Create Secure Capsule'}
-
-        <span aria-hidden="true">→</span>
-      </button>
-    </form>
+      </section>
+    </main>
   );
 }
-export default CapsuleForm;
 
+export default CapsuleForm;
