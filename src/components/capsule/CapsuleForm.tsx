@@ -201,17 +201,20 @@ function CapsuleForm() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            ciphertext: encrypted.ciphertext,
-            iv: encrypted.iv,
-            salt: encrypted.salt,
-            algorithm: encrypted.algorithm,
-            kdf: encrypted.kdf,
-            kdfIterations:
-              encrypted.kdfIterations,
-            expiresAt,
-            maxReads: 5,
-          }),
+         body: JSON.stringify({
+  ciphertext: encrypted.ciphertext,
+
+  metadata: {
+    iv: encrypted.iv,
+    salt: encrypted.salt,
+    algorithm: encrypted.algorithm,
+    kdf: encrypted.kdf,
+    kdfIterations: encrypted.kdfIterations,
+  },
+
+  expiresAt,
+  maxReads: 5,
+}),
         },
       );
 
