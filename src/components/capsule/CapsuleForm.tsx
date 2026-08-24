@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import {
   LockKeyhole,
@@ -9,7 +8,6 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 const MAX_CHARACTERS = 10000;
-
 const PBKDF2_ITERATIONS = 310000;
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
@@ -17,11 +15,11 @@ const IV_LENGTH = 12;
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL;
 
-interface CreatedCapsule {
+  interface CreatedCapsule {
   id?: string;
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+  function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
 
   for (const byte of bytes) {
@@ -455,6 +453,5 @@ function CapsuleForm() {
     </form>
   );
 }
-
 export default CapsuleForm;
 
