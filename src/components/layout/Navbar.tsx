@@ -20,25 +20,34 @@ function Navbar() {
         className="nav-links"
         aria-label="Main navigation"
       >
-        <a href="#how-it-works">
+        <Link to="/how-it-works">
           How it works
-        </a>
+        </Link>
 
-        <a href="#security">
+        <Link to="/security">
           Security
-        </a>
+        </Link>
 
-        <a href="#about">
+        <Link to="/about">
           About
-        </a>
+        </Link>
       </nav>
 
-      <Link
-        to="/create"
-        className="nav-button"
-      >
-        Create Capsule
-      </Link>
+      <div className="nav-actions">
+        <Link
+          to="/capsule/demo"
+          className="nav-retrieve-button"
+        >
+          Retrieve Capsule
+        </Link>
+
+        <Link
+          to="/create"
+          className="nav-button"
+        >
+          Create Capsule
+        </Link>
+      </div>
     </header>
   );
 }
