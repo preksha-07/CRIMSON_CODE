@@ -225,10 +225,16 @@ function CapsuleForm() {
       const data = await response.json();
 
       /*
-       * The backend must return the newly created
-       * capsule identifier.
+       * The backend returns:
+       *
+       * {
+       *   id,
+       *   expiresAt
+       * }
+       *
+       * Use data.id as the capsule identifier.
        */
-      if (!data.capsuleId) {
+      if (!data.id) {
         throw new Error(
           'The backend did not return a capsule ID.',
         );
@@ -243,7 +249,7 @@ function CapsuleForm() {
        */
       navigate('/capsule-created', {
         state: {
-          capsuleId: data.capsuleId,
+          capsuleId: data.id,
         },
       });
     } catch (submitError) {
