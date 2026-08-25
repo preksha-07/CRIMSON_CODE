@@ -9,7 +9,7 @@ export const createCapsuleSchema = z.object({
     .max(1_500_000, "Ciphertext exceeds maximum limit"),
 
   // Restrict metadata to bounded, safe values
-  metadata: z.record(z.unknown()).optional().default({}),
+  metadata: z.record(z.string(), z.unknown()).optional().default({}),
 
   // Validate ISO timestamp and ensure expiry is in the future
   expiresAt: z
