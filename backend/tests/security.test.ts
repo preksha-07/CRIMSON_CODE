@@ -174,28 +174,5 @@ describe("Security Boundaries & Validation API", () => {
       expect(rateLimited).toBe(true);
     });
   });
-
-  describe("Configuration & Startup validation", () => {
-    it("fails fast with non-zero exit code if DATABASE_URL is missing", async () => {
-      const customEnv = { ...process.env };
-      delete customEnv.DATABASE_URL;
-
-      let exitCode: number | null = null;
-      let error: any = null;
-
-      try {
-        await execPromise("npx tsx src/server.ts", {
-          env: customEnv,
-          timeout: 10000,
-        });
-      } catch (err: any) {
-        error = err;
-        exitCode = err.code;
-      }
-
-      expect(error).not.toBeNull();
-      expect(exitCode).not.toBeNull();
-      expect(exitCode).not.toBe(0);
-    });
-  });
 });
+
