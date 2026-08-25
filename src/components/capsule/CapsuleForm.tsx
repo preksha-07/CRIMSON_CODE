@@ -27,6 +27,16 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function toArrayBuffer(
+  bytes: Uint8Array,
+): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+
+  new Uint8Array(buffer).set(bytes);
+
+  return buffer;
+}
+
 function getExpiryDate(option: ExpiryOption): string {
   const now = new Date();
 
@@ -61,7 +71,7 @@ async function deriveEncryptionKey(
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt,
+      salt: toArrayBuffer(salt),
       iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
@@ -98,7 +108,7 @@ async function encryptMessage(
     await crypto.subtle.encrypt(
       {
         name: 'AES-GCM',
-        iv,
+        iv: toArrayBuffer(iv),
       },
       key,
       encoder.encode(message),

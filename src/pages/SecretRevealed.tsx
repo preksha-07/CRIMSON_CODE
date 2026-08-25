@@ -1,4 +1,3 @@
-
 import {
   Check,
   Copy,
@@ -6,16 +5,27 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useLocation, Navigate } from 'react-router-dom';
 
-interface SecretRevealedProps {
-  message: string;
+interface SecretRevealedState {
+  message?: string;
 }
 
-function SecretRevealed({
-  message,
-}: SecretRevealedProps) {
+function SecretRevealed() {
+  const location = useLocation();
+
+  const state =
+    location.state as SecretRevealedState | null;
+
+  const message = state?.message ?? '';
+
   const [copied, setCopied] = useState(false);
 
+  if (!message) {
+    return <Navigate to="/capsule-unavailable" replace />;
+  }
+
+  
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(message);
