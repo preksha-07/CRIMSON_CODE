@@ -15,6 +15,29 @@ https://crimson-code-backend.onrender.com/api/health
 
 ---
 
+## Capsule Lifecycle
+
+CRIMSON_CODE capsules are designed for one-time retrieval.
+
+- A capsule has a configurable lifetime (for example, 1 hour).
+- The recipient can successfully retrieve the capsule only once.
+- After a successful retrieval, the capsule is immediately invalidated and cannot be opened again.
+- If the capsule is never retrieved, it becomes unavailable once its configured lifetime expires.
+
+This provides a temporary, single-use sharing model for sensitive messages.
+
+---
+
+## Security Model
+
+The message is encrypted client-side before it is sent to the backend.
+
+The backend stores the encrypted ciphertext and capsule metadata, rather than the plaintext message. The decryption password and key material remain on the client and are not sent to the backend.
+
+Capsules are single-use and are invalidated after successful retrieval.
+
+---
+
 ## 🛡️ Overview
 
 CRIMSON CODE is designed with security and privacy as core principles.
