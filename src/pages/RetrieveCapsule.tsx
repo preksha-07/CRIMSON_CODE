@@ -37,6 +37,16 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+function toArrayBuffer(
+  bytes: Uint8Array,
+): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+
+  new Uint8Array(buffer).set(bytes);
+
+  return buffer;
+}
+
 async function deriveDecryptionKey(
   password: string,
   salt: Uint8Array,
@@ -58,7 +68,7 @@ async function deriveDecryptionKey(
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt,
+      salt: toArrayBuffer(salt),
       iterations,
       hash: 'SHA-256',
     },
@@ -99,14 +109,14 @@ async function decryptMessage(
     base64ToBytes(ciphertext);
 
   const decrypted =
-    await crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv,
-      },
-      key,
-      encryptedData,
-    );
+  await crypto.subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv: toArrayBuffer(iv),
+    },
+    key,
+    toArrayBuffer(encryptedData),
+  );
 
   return new TextDecoder().decode(decrypted);
 }
