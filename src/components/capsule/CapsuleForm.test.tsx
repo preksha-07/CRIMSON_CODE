@@ -1,14 +1,28 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CapsuleForm from './CapsuleForm';
 
+// Mock react-router-dom navigation
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = (await vi.importActual('react-router-dom')) as any;
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
+// Polyfill VITE_API_BASE_URL for testing
+import.meta.env.VITE_API_BASE_URL = 'http://localhost:3000';
+
 describe('CapsuleForm Component - Minimal Critical Coverage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockNavigate.mockReset();
   });
 
-  it('valid capsule creation: submits form and performs POST request with payload', async () => {
+  it('valid capsule creation: submits form and performs POST request with encrypted payload', async () => {
     const mockResponse = { id: 'capsule-id-123', expiresAt: '2026-08-24T10:00:00Z' };
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(() =>
       Promise.resolve({
@@ -20,9 +34,11 @@ describe('CapsuleForm Component - Minimal Critical Coverage', () => {
     render(<CapsuleForm />);
     const user = userEvent.setup();
 
-    // Fill message field
-    const textarea = screen.getByLabelText(/your sensitive information/i);
-    await user.type(textarea, 'Test payload message');
+    // Fill message and password fields
+    const secretInput = screen.getByLabelText(/secret message/i);
+    const passwordInput = screen.getByLabelText(/capsule password/i);
+    await user.type(secretInput, 'My secret message content');
+    await user.type(passwordInput, 'securepassword123');
 
     // Submit form
     const submitBtn = screen.getByRole('button', { name: /create secure capsule/i });
@@ -32,17 +48,21 @@ describe('CapsuleForm Component - Minimal Critical Coverage', () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     const [calledUrl, calledOptions] = fetchSpy.mock.calls[0];
 
-    expect(calledUrl).toMatch(/\/api\/capsules$/);
+    expect(calledUrl).toBe('http://localhost:3000/api/capsules');
     expect(calledOptions?.method).toBe('POST');
 
     const body = JSON.parse(calledOptions?.body as string);
     expect(body).toHaveProperty('ciphertext');
-    expect(body).toHaveProperty('expiresAt');
-    expect(body).toHaveProperty('maxReads');
+    expect(body.ciphertext).not.toBe('My secret message content'); // Must be encrypted
+    expect(body.metadata).toHaveProperty('iv');
+    expect(body.metadata).toHaveProperty('salt');
+    expect(body.metadata.algorithm).toBe('AES-GCM');
+    expect(body.maxReads).toBe(5);
 
-    // NOTE:
-    // - Encryption testing is BLOCKED: The current implementation sends the hardcoded placeholder 'TEMPORARY_ENCRYPTED_VALUE'.
-    // - Success navigation testing is BLOCKED: The current component only logs the response to console and does not perform router navigation.
+    // Verify transition to success page
+    expect(mockNavigate).toHaveBeenCalledWith('/capsule-created', {
+      state: { capsuleId: 'capsule-id-123' },
+    });
   });
 
   it('invalid capsule creation: validation error prevents submission', async () => {
@@ -55,7 +75,7 @@ describe('CapsuleForm Component - Minimal Critical Coverage', () => {
     await user.click(submitBtn);
 
     const errorMessage = await screen.findByRole('alert');
-    expect(errorMessage).toHaveTextContent('Please enter some information before creating a capsule.');
+    expect(errorMessage).toHaveTextContent('Please enter a secret message.');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

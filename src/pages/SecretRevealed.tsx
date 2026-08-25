@@ -1,4 +1,3 @@
-
 import {
   Check,
   Copy,
@@ -6,14 +5,12 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
-interface SecretRevealedProps {
-  message: string;
-}
-
-function SecretRevealed({
-  message,
-}: SecretRevealedProps) {
+function SecretRevealed() {
+  const location = useLocation();
+  const state = location.state as { message?: string } | null;
+  const message = state?.message ?? '';
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
